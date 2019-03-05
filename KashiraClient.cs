@@ -23,6 +23,8 @@ namespace DowntimeOPC
         // Variable session
         private Session session;
 
+        private static ExitCode exitCode;
+
         // Constructor for KashiraClient
         public KashiraClient(string _endpointURL, bool _autoAccept)
         {
@@ -32,6 +34,84 @@ namespace DowntimeOPC
             autoAccept = _autoAccept;
             // Set clientRunTime
             clientRunTime = Timeout.Infinite;
+        }
+
+        public void Run()
+        {
+            try
+            {
+                ConsoleKashiraClient().Wait();
+            }
+            catch (Exception ex)
+            {
+                Utils.Trace("ServiceResultException: " + ex.Message);
+                Console.WriteLine("Exception: {0}", ex.Message);
+                return;
+            }
+
+            ManualResetEvent quitEvent = new ManualResetEvent(false);
+            try
+            {
+                Console.CancelKeyPress += (sender, eArgs) =>
+                {
+                    quitEvent.Set();
+                    eArgs.Cancel = true;
+                };
+            }
+            catch
+            {
+            }
+            // wait for timeout Ctrl-C
+            quitEvent.WaitOne(clientRunTime);
+
+            // return error conditions
+            if (session.KeepAliveStopped)
+            {
+                exitCode = ExitCode.ErrorNoKeepAlive;
+                return;
+            }
+            exitCode = ExitCode.Ok;
+        }
+
+        public static ExitCode ExitCode { get => exitCode; }
+
+        private async Task ConsoleKashiraClient()
+        {
+            /* STEP 1 - CREATE APP CONFIGURATION */
+            exitCode = ExitCode.ErrorCreateApplication;
+            ApplicationInstance application = new ApplicationInstance
+            {
+                ApplicationName = "UA Kashira Client",
+                ApplicationType = ApplicationType.Client,
+                ConfigSectionName = "Opc.Ua.KashiraClient"
+            };
+
+            /* STEP 2 - LOAD APPLICATION CONFIGURATION */
+            ApplicationConfiguration config = await application.LoadApplicationConfiguration(false);
+
+            /* STEP 3 - CHECK THE APPLICATION CERTIFICATE */
+            bool haveAppCertificate = await application.CheckApplicationInstanceCertificate(false, 0);
+            if(!haveAppCertificate)
+            {
+                throw new Exception("Application instance certificate invalid!");
+            }
+
+            if(haveAppCertificate)
+            {
+                config.ApplicationUri = Utils.GetApplicationUriFromCertificate(config.SecurityConfiguration.ApplicationCertificate.Certificate);
+                if(config.SecurityConfiguration.AutoAcceptUntrustedCertificates)
+                {
+                    autoAccept = true;
+                }
+                config.CertificateValidator.CertificateValidation += new CertificateValidationEventHandler(CertificateValidator_CertificateValidation);
+            }
+            else
+            {
+                Console.WriteLine("WARN: missing application certificate, using unsecure connection.");
+            }
+
+            /* STEP 4 - DISCOVER ENDPOINTS*/
+            
         }
 
         // Helpers

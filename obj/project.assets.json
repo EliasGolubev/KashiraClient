@@ -6988,7 +6988,7 @@
   "projectFileDependencyGroups": {
     ".NETCoreApp,Version=v2.1": [
       "Microsoft.NETCore.App >= 2.1.0",
-      "OPCFoundation.NetStandard.Opc.Ua"
+      "OPCFoundation.NetStandard.Opc.Ua >= 1.4.354.23"
     ]
   },
   "packageFolders": {
@@ -7039,7 +7039,7 @@
           },
           "OPCFoundation.NetStandard.Opc.Ua": {
             "target": "Package",
-            "version": "(, )"
+            "version": "[1.4.354.23, )"
           }
         },
         "imports": [

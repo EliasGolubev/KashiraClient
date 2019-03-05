@@ -10,8 +10,14 @@ namespace DowntimeOPC
 {
     class Program
     {
-        static void Main(string[] args)
+        public static int Main(string[] args)
         {
+            bool autoAccept = true;
+            string endpointURL = "opc.tcp://mos21-ibapda01:4840";
+
+            KashiraClient client = new KashiraClient(_endpointURL: endpointURL, _autoAccept: autoAccept);
+            client.Run();
+            return (int)KashiraClient.ExitCode; 
         }
     }
 }
