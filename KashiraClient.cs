@@ -118,7 +118,7 @@ namespace DowntimeOPC
             exitCode = ExitCode.ErrorCreateSession;
             var endpointConfiguration = EndpointConfiguration.Create(config);
             var endpoint = new ConfiguredEndpoint(null, selectedEndpoint, endpointConfiguration);
-            session = await Session.Create(config, endpoint, false, "OPC UA Console Client", 60_000, new UserIdentity(new AnonymousIdentityToken()), null);
+            session = await Session.Create(config, endpoint, false, "OPC UA Kashira Client", 60_000, new UserIdentity(new AnonymousIdentityToken()), null);
             session.KeepAlive += Client_KeepAlive;
 
             /* STEP 6 - BROWSE THE OPC UA SERVER NAMESPACE */
@@ -162,8 +162,41 @@ namespace DowntimeOPC
                     Console.WriteLine(" + {0}, {1}, {2}", nextRd.DisplayName, nextRd.BrowseName, nextRd.NodeClass);
                 }
             }
-            
-            
+
+            /* CREATE SUBSCRIPTION WITH PUBLISHING INTERVAL OF 1 SECONDS */
+            exitCode = ExitCode.ErrorCreateSubscription;
+            var subscription = new Subscription(session.DefaultSubscription) { PublishingInterval = 1_000 };
+
+            /* ADD LIST OF ITEMS (SERVER CURRENT TIME AND STATUS) TO THE SUBSCRIPTION */
+            exitCode = ExitCode.ErrorMonitoredItem;
+            var list = new List<MonitoredItem>{
+                //new MonitoredItem(subscription.DefaultItem)
+                //{
+                //    DisplayName = "ServerStatusCurrentTime", StartNodeId = "i="+Variables.Server_ServerStatus_CurrentTime.ToString()
+                //},
+                new MonitoredItem(subscription.DefaultItem)
+                {
+                    DisplayName = "PackingL1State", StartNodeId = "ns=3;s=V:0.3.104.1.0"
+                },
+                new MonitoredItem(subscription.DefaultItem)
+                {
+                    DisplayName = "PackingL3State", StartNodeId = "ns=3;s=V:0.3.104.1.1"
+                },
+                new MonitoredItem(subscription.DefaultItem)
+                {
+                    DisplayName = "HourChange", StartNodeId = "ns=3;s=V:0.3.104.1.2"
+                }
+            };
+            list.ForEach(i => i.Notification += OnNotification);
+            subscription.AddItems(list);
+
+            /* ADD THE SUBSCRIPTION TO THE SESSION */
+            exitCode = ExitCode.ErrorAddSubscription;
+            session.AddSubscription(subscription);
+            subscription.Create();
+
+            Console.WriteLine("8 - Running...Press Ctrl-C to exit ...");
+            exitCode = ExitCode.ErrorRunning;
         }
 
         // Helpers
