@@ -111,6 +111,58 @@ namespace DowntimeOPC
             }
 
             /* STEP 4 - DISCOVER ENDPOINTS*/
+            exitCode = ExitCode.ErrorDiscoverEndpoints;
+            var selectedEndpoint = CoreClientUtils.SelectEndpoint(endpointURL, haveAppCertificate, 15_000);
+
+            /* STEP 5 - CREATE SESSION WITH OPC UA SERVER */
+            exitCode = ExitCode.ErrorCreateSession;
+            var endpointConfiguration = EndpointConfiguration.Create(config);
+            var endpoint = new ConfiguredEndpoint(null, selectedEndpoint, endpointConfiguration);
+            session = await Session.Create(config, endpoint, false, "OPC UA Console Client", 60_000, new UserIdentity(new AnonymousIdentityToken()), null);
+            session.KeepAlive += Client_KeepAlive;
+
+            /* STEP 6 - BROWSE THE OPC UA SERVER NAMESPACE */
+            exitCode = ExitCode.ErrorBrowseNamespace;
+            ReferenceDescriptionCollection references;
+            Byte[] continuationPoint;
+
+            references = session.FetchReferences(ObjectIds.ObjectsFolder);
+            session.Browse(
+                null,
+                null,
+                ObjectIds.ObjectsFolder,
+                0u,
+                BrowseDirection.Forward,
+                ReferenceTypeIds.HierarchicalReferences,
+                true,
+                (uint)NodeClass.Variable | (uint)NodeClass.Object | (uint)NodeClass.Method,
+                out continuationPoint,
+                out references);
+            
+            Console.WriteLine("DisplayName, BrowseName, NodeClass");
+            foreach(var rd in references)
+            {
+                Console.WriteLine("{0}, {1}, {2}", rd.DisplayName, rd.BrowseName, rd.NodeClass);
+                ReferenceDescriptionCollection nextRefs;
+                byte[] nextCp;
+                session.Browse(
+                    null,
+                    null,
+                    ExpandedNodeId.ToNodeId(rd.NodeId, session.NamespaceUris),
+                    0u,
+                    BrowseDirection.Forward,
+                    ReferenceTypeIds.HierarchicalReferences,
+                    true,
+                    (uint)NodeClass.Variable | (uint)NodeClass.Object | (uint)NodeClass.Method,
+                    out nextCp,
+                    out nextRefs);
+
+                foreach (var nextRd in nextRefs)
+                {
+                    Console.WriteLine(" + {0}, {1}, {2}", nextRd.DisplayName, nextRd.BrowseName, nextRd.NodeClass);
+                }
+            }
+            
             
         }
 
