@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Opc.Ua;
 using Opc.Ua.Client;
 using Opc.Ua.Configuration;
+using NLog;
 
 namespace DowntimeOPC
 {
@@ -25,6 +26,8 @@ namespace DowntimeOPC
 
         private static ExitCode exitCode;
 
+        private Logger logger = LogManager.GetLogger("OPCuaKashira");
+
         // Constructor for KashiraClient
         public KashiraClient(string _endpointURL, bool _autoAccept)
         {
@@ -44,6 +47,7 @@ namespace DowntimeOPC
             }
             catch (Exception ex)
             {
+                logger.Error("ServiceResultException: " + ex.Message);
                 Utils.Trace("ServiceResultException: " + ex.Message);
                 Console.WriteLine("Exception: {0}", ex.Message);
                 return;
@@ -67,6 +71,7 @@ namespace DowntimeOPC
             // return error conditions
             if (session.KeepAliveStopped)
             {
+                logger.Error("Error no keep alive");
                 exitCode = ExitCode.ErrorNoKeepAlive;
                 return;
             }
@@ -77,7 +82,7 @@ namespace DowntimeOPC
 
         private async Task ConsoleKashiraClient()
         {
-            /* STEP 1 - CREATE APP CONFIGURATION */
+            logger.Info("Create app configuration");
             exitCode = ExitCode.ErrorCreateApplication;
             ApplicationInstance application = new ApplicationInstance
             {
@@ -85,14 +90,14 @@ namespace DowntimeOPC
                 ApplicationType = ApplicationType.Client,
                 ConfigSectionName = "Opc.Ua.KashiraClient"
             };
-
-            /* STEP 2 - LOAD APPLICATION CONFIGURATION */
+            
+            logger.Info("Load application configuration");
             ApplicationConfiguration config = await application.LoadApplicationConfiguration(false);
 
-            /* STEP 3 - CHECK THE APPLICATION CERTIFICATE */
             bool haveAppCertificate = await application.CheckApplicationInstanceCertificate(false, 0);
             if(!haveAppCertificate)
             {
+                logger.Error("Application instance certificate invalid!");
                 throw new Exception("Application instance certificate invalid!");
             }
 
@@ -104,24 +109,24 @@ namespace DowntimeOPC
                     autoAccept = true;
                 }
                 config.CertificateValidator.CertificateValidation += new CertificateValidationEventHandler(CertificateValidator_CertificateValidation);
+                logger.Info("Check the application certificate");
             }
             else
             {
-                Console.WriteLine("WARN: missing application certificate, using unsecure connection.");
+                logger.Error("WARN: missing application certificate, using unsecure connection.");
             }
-
-            /* STEP 4 - DISCOVER ENDPOINTS*/
+            logger.Info("Discover endpoints");
             exitCode = ExitCode.ErrorDiscoverEndpoints;
             var selectedEndpoint = CoreClientUtils.SelectEndpoint(endpointURL, haveAppCertificate, 15_000);
-
-            /* STEP 5 - CREATE SESSION WITH OPC UA SERVER */
+            
+            logger.Info("Create session with OPC server");
             exitCode = ExitCode.ErrorCreateSession;
             var endpointConfiguration = EndpointConfiguration.Create(config);
             var endpoint = new ConfiguredEndpoint(null, selectedEndpoint, endpointConfiguration);
             session = await Session.Create(config, endpoint, false, "OPC UA Kashira Client", 60_000, new UserIdentity(new AnonymousIdentityToken()), null);
             session.KeepAlive += Client_KeepAlive;
 
-            /* STEP 6 - BROWSE THE OPC UA SERVER NAMESPACE */
+            logger.Info("Browse the OPC UA server namespace");
             exitCode = ExitCode.ErrorBrowseNamespace;
             ReferenceDescriptionCollection references;
             Byte[] continuationPoint;
@@ -163,17 +168,12 @@ namespace DowntimeOPC
                 }
             }
 
-            /* CREATE SUBSCRIPTION WITH PUBLISHING INTERVAL OF 1 SECONDS */
+            logger.Info("Create subscription with publishing interval of 1 sec");
             exitCode = ExitCode.ErrorCreateSubscription;
             var subscription = new Subscription(session.DefaultSubscription) { PublishingInterval = 1_000 };
-
-            /* ADD LIST OF ITEMS (SERVER CURRENT TIME AND STATUS) TO THE SUBSCRIPTION */
+            logger.Info("Add list of items (server current time and status) to the subscription");
             exitCode = ExitCode.ErrorMonitoredItem;
             var list = new List<MonitoredItem>{
-                //new MonitoredItem(subscription.DefaultItem)
-                //{
-                //    DisplayName = "ServerStatusCurrentTime", StartNodeId = "i="+Variables.Server_ServerStatus_CurrentTime.ToString()
-                //},
                 new MonitoredItem(subscription.DefaultItem)
                 {
                     DisplayName = "PackingL1State", StartNodeId = "ns=3;s=V:0.3.104.1.0"
@@ -190,7 +190,7 @@ namespace DowntimeOPC
             list.ForEach(i => i.Notification += OnNotification);
             subscription.AddItems(list);
 
-            /* ADD THE SUBSCRIPTION TO THE SESSION */
+            logger.Info("Add the subscription to the session");
             exitCode = ExitCode.ErrorAddSubscription;
             session.AddSubscription(subscription);
             subscription.Create();
@@ -227,14 +227,16 @@ namespace DowntimeOPC
             reconnectHandler.Dispose();
             reconnectHandler = null;
 
-            Console.WriteLine("--- RECONNECTED ---");
+            logger.Error("RECONNECTED");
+            logger.Info("RECONNECTED");
         }
 
         private static void OnNotification(MonitoredItem item, MonitoredItemNotificationEventArgs e)
         {
+            Logger logger = LogManager.GetLogger("OPCuaKashira");
             foreach (var value in item.DequeueValues())
             {
-                Console.WriteLine("{0}: {1}, {2}, {3}", item.DisplayName, value.Value, value.SourceTimestamp, value.StatusCode);
+                logger.Info(item.DisplayName + ":" + value.Value + ", " + value.SourceTimestamp + ", " + value.StatusCode);
             }
         }
 
